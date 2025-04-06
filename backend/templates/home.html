@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Lip Reading + Speech Recognition</title>
+  <style>
+    body {
+      background: #111;
+      color: #fff;
+      font-family: sans-serif;
+      text-align: center;
+    }
+    video, canvas {
+      border: 2px solid #fff;
+      border-radius: 10px;
+      margin-top: 20px;
+    }
+    #caption {
+      font-size: 24px;
+      margin-top: 20px;
+      color: #0f0;
+    }
+    #error {
+      color: red;
+      font-size: 20px;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+  <h1>🧠 Lip Movement Detection + 🎤 Live Captioning</h1>
+  <video id="video" width="640" height="480" autoplay muted playsinline></video>
+  <canvas id="canvas" width="640" height="480"></canvas>
+  <div id="caption">[Speech]: ...</div>
+  <div id="error"></div>
+
+  <script type="module">
+    import * as faceLandmarksDetection from 'https://cdn.jsdelivr.net/npm/@tensorflow-models/face-landmarks-detection@1.0.3/dist/face-landmarks-detection.esm.js';
+    import '@tensorflow/tfjs-backend-webgl';
+
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const captionDiv = document.getElementById('caption');
+    const errorDiv = document.getElementById('error');
+
+    // Request permissions for camera and microphone
+    async function setupPermissions() {
+      try {
+        // Request access to camera and microphone
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+
+        // Attach the video stream to the video element
+        video.srcObject = stream;
+        
+        return new Promise(resolve => {
+          video.onloadedmetadata = () => resolve(video);
+        });
+      } catch (err) {
+        console.error("Permission request failed:", err);
+        errorDiv.textContent = "Permission denied. Please allow access to your camera and microphone.";
+      }
+    }
+
+    async function main() {
+      await setupPermissions();  // Request access to the camera and microphone
+
+      // Load the face landmarks detection model
+      const model = await faceLandmarksDetection.load(
+        faceLandmarksDetection.SupportedPackages.mediapipeFacemesh
+      );
+
+      async function detect() {
+        // Draw video frame onto the canvas
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        // Estimate faces in the video
+        const predictions = await model.estimateFaces({ input: video });
+
+        // If faces are detected, draw landmarks and lip movements
+        if (predictions.length > 0) {
+          for (const pred of predictions) {
+            const keypoints = pred.scaledMesh;
+
+            // Get top and bottom lip points
+            const topLip = keypoints[13];
+            const bottomLip = keypoints[14];
+            const lipDistance = Math.abs(bottomLip[1] - topLip[1]);
+
+            // Draw lip landmarks
+            keypoints.slice(48, 60).forEach(([x, y]) => {
+              ctx.beginPath();
+              ctx.arc(x, y, 2, 0, 2 * Math.PI);
+              ctx.fillStyle = 'cyan';
+              ctx.fill();
+            });
+
+            // Display "Talking..." text if lip distance is greater than threshold
+            if (lipDistance > 10) {
+              ctx.fillStyle = 'lime';
+              ctx.font = '24px Arial';
+              ctx.fillText('Talking...', 50, 50);
+            }
+          }
+        }
+
+        // Request next animation frame for continuous detection
+        requestAnimationFrame(detect);
+      }
+
+      detect();
+    }
+
+    // Start the process after permission is granted
+    main();
+
+    // Speech recognition setup
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      const recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+
+      recognition.onresult = (event) => {
+        const transcript = Array.from(event.results)
+          .map(result => result[0].transcript)
+          .join('');
+        captionDiv.textContent = `[Speech]: ${transcript}`;
+      };
+
+      recognition.onerror = (event) => {
+        console.error('Speech Recognition Error:', event.error);
+        captionDiv.textContent = `[Speech]: (error: ${event.error})`;
+      };
+
+      recognition.start();
+    } else {
+      captionDiv.textContent = "[Speech]: Web Speech API not supported!";
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lip Reading & Speech Recognition</title>
+    <style>
+        :root {
+            --primary: #4361ee;
+            --secondary: #3f37c9;
+            --accent: #4895ef;
+            --light: #f8f9fa;
+            --dark: #212529;
+            --success: #4cc9f0;
+            --warning: #f72585;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        body {
+            background-color: var(--light);
+            color: var(--dark);
+            min-height: 100vh;
+            padding: 2rem;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        
+        h1 {
+            color: var(--primary);
+            margin-bottom: 0.5rem;
+        }
+        
+        .subtitle {
+            color: var(--secondary);
+            opacity: 0.8;
+        }
+        
+        .app-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+        }
+        
+        @media (max-width: 768px) {
+            .app-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        .video-section, .output-section {
+            background: white;
+            border-radius: 10px;
+            padding: 1.5rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        .section-title {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+            color: var(--secondary);
+        }
+        
+        .section-title svg {
+            width: 24px;
+            height: 24px;
+        }
+        
+        .video-container {
+            position: relative;
+            width: 100%;
+            margin-bottom: 1rem;
+        }
+        
+        video, canvas {
+            width: 100%;
+            border-radius: 8px;
+            display: block;
+        }
+        
+        .lip-mask-container {
+            position: relative;
+            width: 100%;
+            height: 150px;
+            background: var(--dark);
+            border-radius: 8px;
+            overflow: hidden;
+            margin-bottom: 1rem;
+        }
+        
+        #lipMaskCanvas {
+            width: 100%;
+            height: 100%;
+        }
+        
+        .controls {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+        
+        button {
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 5px;
+            background-color: var(--primary);
+            color: white;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.2s;
+            flex: 1;
+        }
+        
+        button:hover {
+            background-color: var(--secondary);
+            transform: translateY(-2px);
+        }
+        
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .btn-danger {
+            background-color: var(--warning);
+        }
+        
+        .btn-success {
+            background-color: var(--success);
+        }
+        
+        .speech-output {
+            height: 300px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 1rem;
+            overflow-y: auto;
+            background-color: #f8f9fa;
+            margin-bottom: 1rem;
+        }
+        
+        .speech-bubble {
+            background-color: white;
+            border-radius: 15px;
+            padding: 0.75rem 1rem;
+            margin-bottom: 0.5rem;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            position: relative;
+            max-width: 80%;
+            word-wrap: break-word;
+        }
+        
+        .speech-bubble.user {
+            background-color: var(--primary);
+            color: white;
+            margin-left: auto;
+        }
+        
+        .speech-bubble.system {
+            background-color: #e9ecef;
+            margin-right: auto;
+        }
+        
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem;
+            border-radius: 5px;
+            margin-bottom: 1rem;
+        }
+        
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background-color: #6c757d;
+        }
+        
+        .status-dot.active {
+            background-color: var(--success);
+            animation: pulse 1.5s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.2); }
+            100% { transform: scale(1); }
+        }
+        
+        .threshold-control {
+            margin-bottom: 1rem;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+        }
+        
+        input[type="range"] {
+            width: 100%;
+        }
+        
+        .threshold-value {
+            text-align: center;
+            font-weight: bold;
+            color: var(--primary);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Lip Reading & Speech Recognition</h1>
+            <p class="subtitle">Real-time lip movement detection with speech recognition</p>
+        </header>
+        
+        <div class="app-grid">
+            <div class="video-section">
+                <h2 class="section-title">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                    Video Feed
+                </h2>
+                
+                <div class="status-indicator">
+                    <div class="status-dot" id="cameraStatus"></div>
+                    <span id="cameraStatusText">Camera: Loading...</span>
+                </div>
+                
+                <div class="video-container">
+                    <video id="video" playsinline autoplay muted></video>
+                    <canvas id="canvas"></canvas>
+                </div>
+                
+                <div class="lip-mask-container">
+                    <canvas id="lipMaskCanvas"></canvas>
+                </div>
+                
+                <div class="threshold-control">
+                    <label for="thresholdSlider">Lip Movement Sensitivity</label>
+                    <input type="range" id="thresholdSlider" min="5" max="50" value="20">
+                    <div class="threshold-value">Threshold: <span id="thresholdValue">20</span></div>
+                </div>
+                
+                <div class="controls">
+                    <button id="startBtn">Start</button>
+                    <button id="stopBtn" disabled>Stop</button>
+                </div>
+            </div>
+            
+            <div class="output-section">
+                <h2 class="section-title">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                    </svg>
+                    Speech Output
+                </h2>
+                
+                <div class="status-indicator">
+                    <div class="status-dot" id="speechStatus"></div>
+                    <span id="speechStatusText">Speech Recognition: Ready</span>
+                </div>
+                
+                <div class="speech-output" id="speechOutput">
+                    <!-- Speech bubbles will be added here -->
+                </div>
+                
+                <div class="controls">
+                    <button id="clearBtn" class="btn-danger">Clear Output</button>
+                    <button id="rephraseBtn" class="btn-success">Rephrase Last</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // DOM Elements
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const lipMaskCanvas = document.getElementById('lipMaskCanvas');
+        const ctx = canvas.getContext('2d');
+        const lipCtx = lipMaskCanvas.getContext('2d');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const rephraseBtn = document.getElementById('rephraseBtn');
+        const speechOutput = document.getElementById('speechOutput');
+        const thresholdSlider = document.getElementById('thresholdSlider');
+        const thresholdValue = document.getElementById('thresholdValue');
+        const cameraStatus = document.getElementById('cameraStatus');
+        const cameraStatusText = document.getElementById('cameraStatusText');
+        const speechStatus = document.getElementById('speechStatus');
+        const speechStatusText = document.getElementById('speechStatusText');
+
+        // App State
+        let stream = null;
+        let isRunning = false;
+        let isTalking = false;
+        let lipDistanceThreshold = 20;
+        let speechRecognition = null;
+        let lastSpeech = '';
+        let model = null;
+        
+        // Initialize the app
+        async function init() {
+            // Set up event listeners
+            startBtn.addEventListener('click', startApp);
+            stopBtn.addEventListener('click', stopApp);
+            clearBtn.addEventListener('click', clearOutput);
+            rephraseBtn.addEventListener('click', rephraseLast);
+            thresholdSlider.addEventListener('input', updateThreshold);
+            
+            // Load face tracking model
+            await loadModel();
+            
+            // Initialize camera
+            initCamera();
+        }
+        
+        // Load face tracking model
+        async function loadModel() {
+            try {
+                // In a real app, you would load a proper model here
+                // For this demo, we'll just simulate it
+                console.log("Loading face tracking model...");
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                console.log("Model loaded");
+            } catch (error) {
+                console.error("Error loading model:", error);
+            }
+        }
+        
+        // Initialize camera
+        async function initCamera() {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                video.srcObject = stream;
+                
+                // Set canvas dimensions to match video
+                video.addEventListener('loadedmetadata', () => {
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    lipMaskCanvas.width = 120; // Fixed size for lip mask
+                    lipMaskCanvas.height = 80;
+                    
+                    updateCameraStatus(true);
+                });
+            } catch (error) {
+                console.error("Error accessing camera:", error);
+                updateCameraStatus(false, "Camera access denied");
+            }
+        }
+        
+        // Start the application
+        function startApp() {
+            if (!stream) {
+                alert("Please allow camera access first");
+                return;
+            }
+            
+            isRunning = true;
+            startBtn.disabled = true;
+            stopBtn.disabled = false;
+            
+            // Start face tracking
+            requestAnimationFrame(trackFace);
+            
+            // Start speech recognition
+            startSpeechRecognition();
+            
+            addSpeechBubble("System", "Application started. Begin speaking...", "system");
+        }
+        
+        // Stop the application
+        function stopApp() {
+            isRunning = false;
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            
+            // Stop speech recognition
+            if (speechRecognition) {
+                speechRecognition.stop();
+                updateSpeechStatus(false, "Speech Recognition: Stopped");
+            }
+            
+            addSpeechBubble("System", "Application stopped", "system");
+        }
+        
+        // Clear the speech output
+        function clearOutput() {
+            speechOutput.innerHTML = '';
+        }
+        
+        // Rephrase the last spoken sentence
+        function rephraseLast() {
+            if (!lastSpeech) {
+                addSpeechBubble("System", "No speech to rephrase", "system");
+                return;
+            }
+            
+            // In a real app, you would call an API here
+            // For this demo, we'll just simulate it
+            const rephrased = simulateRephrase(lastSpeech);
+            addSpeechBubble("System", `Rephrased: ${rephrased}`, "system");
+        }
+        
+        // Simulate rephrasing (in a real app, call an API)
+        function simulateRephrase(text) {
+            const rephrases = [
+                `Let me rephrase that: ${text}`,
+                `In other words: ${text.split(' ').reverse().join(' ')}`,
+                `Alternative phrasing: ${text.toLowerCase()}`,
+                `Another way to say this: "${text.replace(/./g, '')} ${text}"`,
+                `Paraphrased version: ${text.slice(0, text.length/2)}...${text.slice(text.length/2)}`
+            ];
+            return rephrases[Math.floor(Math.random() * rephrases.length)];
+        }
+        
+        // Update the lip distance threshold
+        function updateThreshold() {
+            lipDistanceThreshold = parseInt(thresholdSlider.value);
+            thresholdValue.textContent = lipDistanceThreshold;
+        }
+        
+        // Track face and lips
+        function trackFace() {
+            if (!isRunning) return;
+            
+            // Draw video frame to canvas
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            // Simulate face detection (in a real app, use a proper model)
+            const faceRect = {
+                x: canvas.width / 2 - 100,
+                y: canvas.height / 2 - 100,
+                width: 200,
+                height: 250
+            };
+            
+            // Draw face rectangle
+            ctx.strokeStyle = '#00FF00';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(faceRect.x, faceRect.y, faceRect.width, faceRect.height);
+            
+            // Simulate lip points (in a real app, detect actual lip landmarks)
+            const lipPoints = [];
+            const lipCenterX = faceRect.x + faceRect.width / 2;
+            const lipCenterY = faceRect.y + faceRect.height * 0.7;
+            const lipWidth = 80;
+            const lipHeight = 40;
+            
+            // Generate lip points in a rough oval shape
+            for (let i = 0; i < 12; i++) {
+                const angle = (i / 12) * Math.PI * 2;
+                const x = lipCenterX + Math.cos(angle) * lipWidth / 2;
+                const y = lipCenterY + Math.sin(angle) * lipHeight / 2;
+                lipPoints.push({x, y});
+                
+                // Draw lip points
+                ctx.fillStyle = '#FF0000';
+                ctx.beginPath();
+                ctx.arc(x, y, 3, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            
+            // Calculate lip distance (simulated)
+            const topLip = lipPoints[3].y;
+            const bottomLip = lipPoints[9].y;
+            const lipDistance = bottomLip - topLip;
+            
+            // Determine if talking based on threshold
+            const wasTalking = isTalking;
+            isTalking = lipDistance > lipDistanceThreshold;
+            
+            // Visual feedback for talking state
+            ctx.fillStyle = isTalking ? 'rgba(0, 255, 0, 0.3)' : 'rgba(255, 0, 0, 0.3)';
+            ctx.fillRect(faceRect.x, faceRect.y, faceRect.width, faceRect.height);
+            
+            // Draw lip distance text
+            ctx.fillStyle = '#FFFFFF';
+            ctx.font = '20px Arial';
+            ctx.fillText(`Lip Distance: ${lipDistance.toFixed(1)}`, 20, 40);
+            ctx.fillText(`Threshold: ${lipDistanceThreshold}`, 20, 70);
+            ctx.fillText(`Status: ${isTalking ? 'TALKING' : 'NOT TALKING'}`, 20, 100);
+            
+            // Extract and display lip region
+            extractLipRegion(lipPoints);
+            
+            // Continue tracking
+            requestAnimationFrame(trackFace);
+        }
+        
+        // Extract and display the lip region
+        function extractLipRegion(lipPoints) {
+            // Find bounding box of lips
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            lipPoints.forEach(point => {
+                minX = Math.min(minX, point.x);
+                minY = Math.min(minY, point.y);
+                maxX = Math.max(maxX, point.x);
+                maxY = Math.max(maxY, point.y);
+            });
+            
+            // Add some padding
+            const padding = 20;
+            minX = Math.max(0, minX - padding);
+            minY = Math.max(0, minY - padding);
+            maxX = Math.min(canvas.width, maxX + padding);
+            maxY = Math.min(canvas.height, maxY + padding);
+            
+            // Draw lip region on main canvas (for visualization)
+            ctx.strokeStyle = '#FFFF00';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(minX, minY, maxX - minX, maxY - minY);
+            
+            // Draw lip region on lip mask canvas
+            lipCtx.clearRect(0, 0, lipMaskCanvas.width, lipMaskCanvas.height);
+            
+            // Get image data from the lip region
+            const lipImageData = ctx.getImageData(minX, minY, maxX - minX, maxY - minY);
+            
+            // Create a temporary canvas to resize the lip region
+            const tempCanvas = document.createElement('canvas');
+            const tempCtx = tempCanvas.getContext('2d');
+            tempCanvas.width = maxX - minX;
+            tempCanvas.height = maxY - minY;
+            tempCtx.putImageData(lipImageData, 0, 0);
+            
+            // Draw resized version to lip mask canvas
+            lipCtx.drawImage(tempCanvas, 0, 0, lipMaskCanvas.width, lipMaskCanvas.height);
+            
+            // Apply some effects to make it look processed
+            const imageData = lipCtx.getImageData(0, 0, lipMaskCanvas.width, lipMaskCanvas.height);
+            const data = imageData.data;
+            
+            // Enhance contrast (simple algorithm)
+            for (let i = 0; i < data.length; i += 4) {
+                // Make reds more prominent
+                data[i] = Math.min(255, data[i] * 1.2);
+                // Reduce greens and blues
+                data[i + 1] = data[i + 1] * 0.7;
+                data[i + 2] = data[i + 2] * 0.7;
+            }
+            
+            lipCtx.putImageData(imageData, 0, 0);
+        }
+        
+        // Start speech recognition
+        function startSpeechRecognition() {
+            if (!('webkitSpeechRecognition' in window)) {
+                updateSpeechStatus(false, "Speech Recognition: Not supported");
+                addSpeechBubble("System", "Speech recognition not supported in your browser", "system");
+                return;
+            }
+            
+            speechRecognition = new webkitSpeechRecognition();
+            speechRecognition.continuous = true;
+            speechRecognition.interimResults = true;
+            
+            speechRecognition.onstart = () => {
+                updateSpeechStatus(true, "Speech Recognition: Listening...");
+            };
+            
+            speechRecognition.onerror = (event) => {
+                updateSpeechStatus(false, `Speech Recognition: Error (${event.error})`);
+            };
+            
+            speechRecognition.onend = () => {
+                if (isRunning) {
+                    // Restart recognition if app is still running
+                    speechRecognition.start();
+                }
+            };
+            
+            speechRecognition.onresult = (event) => {
+                let interimTranscript = '';
+                let finalTranscript = '';
+                
+                for (let i = event.resultIndex; i < event.results.length; i++) {
+                    const transcript = event.results[i][0].transcript;
+                    if (event.results[i].isFinal) {
+                        finalTranscript += transcript;
+                    } else {
+                        interimTranscript += transcript;
+                    }
+                }
+                
+                if (finalTranscript) {
+                    lastSpeech = finalTranscript;
+                    addSpeechBubble("You", finalTranscript, "user");
+                } else if (interimTranscript) {
+                    // You could show interim results differently if desired
+                }
+            };
+            
+            speechRecognition.start();
+        }
+        
+        // Add a speech bubble to the output
+        function addSpeechBubble(speaker, text, type) {
+            const bubble = document.createElement('div');
+            bubble.className = `speech-bubble ${type}`;
+            bubble.innerHTML = `<strong>${speaker}:</strong> ${text}`;
+            speechOutput.appendChild(bubble);
+            speechOutput.scrollTop = speechOutput.scrollHeight;
+        }
+        
+        // Update camera status indicator
+        function updateCameraStatus(active, text = null) {
+            cameraStatus.className = `status-dot ${active ? 'active' : ''}`;
+            cameraStatusText.textContent = text || (active ? "Camera: Active" : "Camera: Inactive");
+        }
+        
+        // Update speech recognition status indicator
+        function updateSpeechStatus(active, text = null) {
+            speechStatus.className = `status-dot ${active ? 'active' : ''}`;
+            speechStatusText.textContent = text || (active ? "Speech Recognition: Active" : "Speech Recognition: Inactive");
+        }
+        
+        // Initialize the app when the page loads
+        window.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
